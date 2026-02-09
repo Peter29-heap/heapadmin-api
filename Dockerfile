@@ -36,8 +36,8 @@ RUN mkdir -p /var/www/database \
 # Create .env file if it doesn't exist
 RUN if [ ! -f .env ]; then cp .env.example .env; fi
 
-# Install composer dependencies
-RUN composer install --no-interaction --no-dev --optimize-autoloader
+# Install composer dependencies (update to resolve version conflicts)
+RUN composer update --no-interaction --no-dev --optimize-autoloader --prefer-stable
 
 # Create SQLite database file
 RUN touch /var/www/database/database.sqlite
