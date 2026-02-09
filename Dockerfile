@@ -22,11 +22,19 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory contents
+# Copy the entire application first
 COPY . /var/www
 
-# Copy existing application directory permissions
-RUN chown -R www-data:www-data /var/www
+# Create necessary directories
+RUN mkdir -p /var/www/database \
+    /var/www/storage/framework/cache \
+    /var/www/storage/framework/sessions \
+    /var/www/storage/framework/views \
+    /var/www/storage/logs \
+    /var/www/bootstrap/cache
+
+# Create .env file if it doesn't exist
+RUN if [ ! -f .env ]; then cp .env.example .env; fi
 
 # Install composer dependencies
 RUN composer install --no-interaction --no-dev --optimize-autoloader
@@ -34,22 +42,27 @@ RUN composer install --no-interaction --no-dev --optimize-autoloader
 # Create SQLite database file
 RUN touch /var/www/database/database.sqlite
 
-# Set permissions for storage and bootstrap cache
-RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+# Set proper permissions BEFORE running artisan commands
+RUN chown -R www-data:www-data /var/www \
+    && chmod -R 775 /var/www/storage \
+    && chmod -R 775 /var/www/bootstrap/cache \
+    && chmod 664 /var/www/database/database.sqlite
 
 # Generate application key
 RUN php artisan key:generate --force
 
+# Clear and cache configuration
+RUN php artisan config:clear && php artisan config:cache
+
 # Run database migrations
 RUN php artisan migrate --force
 
-# Seed the database
-RUN php artisan db:seed --force
+# Seed the database (optional - comment out if not needed in production)
+RUN php artisan db:seed --force || true
 
-# Cache configuration
-RUN php artisan config:cache
+# Cache routes and views
 RUN php artisan route:cache
+RUN php artisan view:cache
 
 # Expose port 8080
 EXPOSE 8080
