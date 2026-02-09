@@ -1,6 +1,6 @@
-FROM php:8.2-cli
+FROM php:8.2-fpm
 
-# Install dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -10,34 +10,49 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     sqlite3 \
-    libsqlite3-dev
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+    libsqlite3-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_sqlite mbstring exif pcntl bcmath gd
+RUN docker-php-ext-install pdo_sqlite pdo_mysql mbstring exif pcntl bcmath gd
 
-# Get Composer
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory
-WORKDIR /app
+WORKDIR /var/www
 
-# Copy application files
-COPY . /app
+# Copy existing application directory contents
+COPY . /var/www
 
-# Install dependencies
-RUN composer install --no-dev --optimize-autoloader
+# Copy existing application directory permissions
+RUN chown -R www-data:www-data /var/www
 
-# Generate key and run migrations
-RUN php artisan key:generate
-RUN touch /app/database/database.sqlite
+# Install composer dependencies
+RUN composer install --no-interaction --no-dev --optimize-autoloader
+
+# Create SQLite database file
+RUN touch /var/www/database/database.sqlite
+
+# Set permissions for storage and bootstrap cache
+RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
+# Generate application key
+RUN php artisan key:generate --force
+
+# Run database migrations
 RUN php artisan migrate --force
+
+# Seed the database
 RUN php artisan db:seed --force
 
-# Expose port
+# Cache configuration
+RUN php artisan config:cache
+RUN php artisan route:cache
+
+# Expose port 8080
 EXPOSE 8080
 
-# Start server
-CMD php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
+# Start PHP built-in server
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
